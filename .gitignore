@@ -1,8 +1,6 @@
-*.dat
-*.txt
-*.bz2
-*.tmp
-*.log
+asndb.dat
+domains.txt
+error.log
 .Python
 [Bb]in
 [Ii]nclude
