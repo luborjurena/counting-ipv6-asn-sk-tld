@@ -1,6 +1,12 @@
-import csv,pydig,wget,time,pyasn,subprocess,itertools,os,multiprocessing
+import csv
+import pydig
+import wget
+import time
+import pyasn
+import subprocess
+import os
+import multiprocessing
 from concurrent import futures as cf
-from collections import Counter
 from pathlib import Path
 
 # Resolver configuration
@@ -14,7 +20,7 @@ resolver = pydig.Resolver(
         '9.9.9.9'
      ],
      additional_args=[
-         '+time=3',
+         '+time=10',
          '+cd',
      ]
 )
@@ -23,21 +29,29 @@ resolver = pydig.Resolver(
 wget.download('https://sk-nic.sk/subory/domains.txt', out='domains.txt')
 
 # Download latest DB for pyasn
-try:
+if os.path.exists('/usr/local/bin/pyasn_util_download.py'):
     subprocess.call(['/usr/local/bin/pyasn_util_download.py', '-6'], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-except:
+elif os.path.exists(str(Path.home()) + '/.local/bin/pyasn_util_download.py'):
     subprocess.call([str(Path.home()) + '/.local/bin/pyasn_util_download.py', '-6'], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+elif os.path.exists('./bin/pyasn_util_download.py'):
+    subprocess.call(['./bin/pyasn_util_download.py', '-6'], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+else:
+    raise Exception('Can\'t download pyasn database')
 
-# Convert DB and delete downloaded file
-try:
+# # Convert DB and delete downloaded file
+if os.path.exists('/usr/local/bin/pyasn_util_convert.py'):
     subprocess.run(['/usr/local/bin/pyasn_util_convert.py --single rib.*.bz2 asndb.dat'], shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
     subprocess.run(['rm ' + os.getcwd() + '/rib.*.bz2'], shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-except:
+elif os.path.exists(str(Path.home()) + '/.local/bin/pyasn_util_convert.py'):
     subprocess.run([str(Path.home()) + '/.local/bin/pyasn_util_convert.py --single rib.*.bz2 asndb.dat'], shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
     subprocess.run(['rm ' + os.getcwd() + '/rib.*.bz2'], shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+elif os.path.exists('./bin/pyasn_util_convert.py'):
+    subprocess.run(['./bin/pyasn_util_convert.py --single rib.*.bz2 asndb.dat'], shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+    subprocess.run(['rm ' + os.getcwd() + '/rib.*.bz2'], shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+else:
+    raise Exception('Can\'t convert pyasn database')
 
-# Parse domain list
-domains = []
+# Parse domain.txt
 with open('domains.txt') as csvfile:
     next(csvfile) # Skip header
     next(csvfile)
@@ -47,19 +61,18 @@ with open('domains.txt') as csvfile:
     next(csvfile)
     next(csvfile)
     readCSV = csv.DictReader(csvfile, delimiter=';')
-    for row in readCSV:
-        domains.append(row["domena"])
+    domains = [row["domena"] for row in readCSV]
 
 subprocess.run(['rm ' + os.getcwd() + '/domains.txt'], shell=True, check=True)
 
 # Run dig asynchronously
-dns =[]
+resolved_domains = []
 def dig(domain):
     query_type = 'AAAA'
-    ipv6 = resolver.query(domain, query_type)
-    dns.append([(domain), (ipv6[0])])
+    address = resolver.query(domain, query_type)
+    resolved_domains.append([(domain), (address[0])])
 
-with cf.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()) as pool:
+with cf.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()/2) as pool: # Use 1/2 of available CPU cores
     jobs = (pool.submit(dig, domain) for domain in domains)
     for job in cf.as_completed(jobs):
         continue
@@ -71,11 +84,10 @@ unique_asn = []
 count_asn = []
 pairing = {}
 
-for row in dns:
+for _ in resolved_domains:
     try:
-        result = asndb.lookup(row[1])
-        result = result[0]
-        result = str(result)
+        result = asndb.lookup(_[1])
+        result = str(result[0])
         all_asn.append(result)
         if not result in unique_asn:
             unique_asn.append(result)
@@ -95,4 +107,4 @@ for _ in unique_asn:
 sort_pairs = sorted(pairing.items(), key=lambda x: x[1], reverse=True)
 
 for asn, cnt in sort_pairs:
-    print(asn, cnt)
+    print(f"ASN: {asn}, total domains: {cnt}")
