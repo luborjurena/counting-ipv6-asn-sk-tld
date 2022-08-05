@@ -1,6 +1,6 @@
 import csv
 import pydig
-import wget
+import requests
 import time
 import pyasn
 import subprocess
@@ -26,7 +26,12 @@ resolver = pydig.Resolver(
 )
 
 # Download domain list
-wget.download('https://sk-nic.sk/subory/domains.txt', out='domains.txt')
+headers = {'User-Agent': 'Mozilla/5.0'}
+url = 'https://sk-nic.sk/subory/domains.txt'
+r = requests.get(url, headers=headers)
+with open('domains.txt', 'wb') as fh:
+    fh.write(r.content)
+
 
 # Download latest DB for pyasn
 if os.path.exists('/usr/local/bin/pyasn_util_download.py'):
