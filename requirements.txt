@@ -1,3 +1,2 @@
 pyasn
 pydig
-wget
